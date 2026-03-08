@@ -126,3 +126,76 @@ http://localhost:5174
 Jeśli React uruchomi się na innym porcie, pamiętaj o sprawdzeniu ustawień **CORS w `Program.cs`**.
 
 ---
+
+
+### Aktualizacja Projektu: Wprowadzenie Realnych Danych i Generatora
+
+Ostatnie zmiany skupiły się na pełnej integracji przepływu danych:  
+**od bazy PostgreSQL → przez API → aż po gotowy plik PDF.**
+
+---
+
+### 1. Rozbudowa Bazy Danych (Backend)
+
+- **Nowy Model `Client`**  
+  Dodano tabelę klientów w PostgreSQL:
+  - `Id`
+  - `Name`
+  - `City`
+  - `Email`
+
+- **Seed Data**  
+  Skonfigurowano automatyczne dodawanie startowych danych przy inicjalizacji bazy (np. `Orlen`, `Budimex`).
+
+- **`DataController`**  
+  Zastąpiono sztuczne dane w kodzie realnym połączeniem z bazą danych przy użyciu **Entity Framework Core**.
+
+---
+
+### 2. Nowy Moduł: Generator PDF (Frontend)
+
+- **Data Binding (Wiązanie danych)**  
+  Zaimplementowano mechanizm automatycznego wstrzykiwania danych z bazy do szablonu PDF na podstawie kluczy
+- **Obsługa `@pdfme/generator`**  
+Dodano bibliotekę umożliwiającą generowanie finalnych plików **PDF bezpośrednio w przeglądarce użytkownika**.
+
+- **Ręczne Uwagi (`extraNotes`)**  
+Dodano pole `textarea`, które pozwala użytkownikowi dopisać własne notatki.  
+Treść jest również automatycznie dodawana do generowanego raportu PDF.
+
+---
+
+### 3. Ulepszony Interfejs (UX)
+
+- **System Zakładek (Tabs)**  
+Aplikacja została podzielona na dwie główne sekcje:
+
+- **PROJEKTOWANIE**  
+  Panel dla administratora do tworzenia i edycji szablonów PDF.
+
+- **GENEROWANIE**  
+  Panel dla użytkownika do:
+  - wybierania szablonu
+  - wypełniania danych
+  - generowania i pobierania pliku PDF.
+
+- **Automatyczne Odświeżanie**  
+Po zapisaniu nowego szablonu lista w generatorze aktualizuje się automatycznie **bez przeładowywania strony**.
+
+---
+
+### 4. Poprawki Techniczne
+
+- **Synchronizacja Typów**  
+Naprawiono różnice w konwencjach nazewnictwa między `.NET` a `React`:
+- `camelCase`
+- `PascalCase`
+
+- **Stabilizacja `pdfme`**  
+Wyeliminowano błąd `Invalid argument` poprzez:
+- zastosowanie bazowego pliku **Blank PDF**
+- usunięcie `StrictMode`, który powodował podwójne renderowanie edytora.
+
+- **Optymalizacja API**
+- dodano obsługę błędów JSON
+- wprowadzono zabezpieczenia na wypadek pustej bazy danych

@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@pdfme/generator": "^5.5.8"
+  }
+}

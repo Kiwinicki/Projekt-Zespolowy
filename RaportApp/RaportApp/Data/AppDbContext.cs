@@ -1,22 +1,27 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using RaportApp.Models; // To pozwala widzieć klasę ReportTemplate
+using RaportApp.Models;
 
 namespace RaportApp.Data
 {
-    // DbContext to "most" między Twoim kodem C# a bazą danych PostgreSQL
     public class AppDbContext : DbContext
     {
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-        // Ta linia mówi: "Stwórz w bazie tabelę o nazwie ReportTemplates na podstawie modelu ReportTemplate"
         public DbSet<ReportTemplate> ReportTemplates { get; set; }
+
+        // NOWA TABELA:
+        public DbSet<Client> Clients { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Tutaj moglibyśmy dodać dodatkową konfigurację, 
-            // ale na razie wystarczy nam domyślna.
+            // DODAJEMY PRZYKŁADOWYCH KLIENTÓW PRZY STARCIE:
+            modelBuilder.Entity<Client>().HasData(
+                new Client { Id = 1, Name = "Budimex S.A.", City = "Warszawa", Email = "biuro@budimex.pl" },
+                new Client { Id = 2, Name = "Orlen S.A.", City = "Płock", Email = "kontakt@orlen.pl" },
+                new Client { Id = 3, Name = "InPost Sp. z o.o.", City = "Kraków", Email = "info@inpost.pl" }
+            );
         }
     }
 }

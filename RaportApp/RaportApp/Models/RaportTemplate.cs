@@ -9,7 +9,7 @@ namespace RaportApp.Models
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
 
-        // jsonb to specjalny format w PostgreSQL, idealny pod pdfme
+     
         [Column(TypeName = "jsonb")]
         public string SchemaContent { get; set; } = "{}";
 
