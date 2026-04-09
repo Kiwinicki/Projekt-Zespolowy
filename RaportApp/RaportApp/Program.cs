@@ -24,6 +24,13 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+// Automatyczne aplikowanie migracji bazy przy starcie (ważne przy używaniu Dockera!)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<RaportApp.Data.AppDbContext>();
+    db.Database.Migrate();
+}
+
 // 3. Kolejność Middleware 
 if (app.Environment.IsDevelopment())
 {
