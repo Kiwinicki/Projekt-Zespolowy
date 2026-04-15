@@ -5,201 +5,266 @@ import { text, image, barcodes } from '@pdfme/schemas';
 
 const BLANK_PDF = 'data:application/pdf;base64,JVBERi0xLjQKJeb39/RyCjEgMCBvYmogPDwgL1R5cGUgL0NhdGFsb2cgL1BhZ2VzIDIgMCBSID4+IGVuZG9iagoyIDAgb2JqIDw8IC9UeXBlIC9QYWdlcyAvS2lkcyBbIDMgMCBSIF0gL0NvdW50IDEgPj4gZW5kb2JqCjMgMCBvYmogPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvUmVzb3VyY2VzIDw8ID4+IC9NZWRpYUJveCBbIDAgMCA1OTUuMjggODQxLjg5IF0gL0NvbnRlbnRzIDQgMCBSID4+IGVuZG9iago0IDAgb2JqIDw8IC9MZW5ndGggMCA+PiBzdHJlYW0KZW5kc3RyZWFtIGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSIC9TaXplIDUgPj4KJSVFT0Y=';
 const API_URL = 'http://localhost:5000/api';
+const PLUGINS = { text, image, qrcode: barcodes.qrcode };
+
+const btn = (bg) => ({
+    background: bg, color: 'white', border: 'none',
+    padding: '8px 18px', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold',
+});
 
 function App() {
     const [activeTab, setActiveTab] = useState('design');
     const [templates, setTemplates] = useState([]);
-    const [extraNotes, setExtraNotes] = useState(""); 
     const [clients, setClients] = useState([]);
-    const [reportName, setReportName] = useState("Nowy Szablon");
-
+    const [reportName, setReportName] = useState('Nowy Szablon');
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
+    const [selectedClientId, setSelectedClientId] = useState('');
+    const [extraNotes, setExtraNotes] = useState('');
+    const [statusMsg, setStatusMsg] = useState('');
     const designerRef = useRef(null);
     const designerInstance = useRef(null);
 
-    // --- 1. POBIERANIE DANYCH ---
-    // Przeniosłem to tutaj, aby móc wywołać po zapisie szablonu
-    const refreshData = async () => {
+    const flash = (msg) => { setStatusMsg(msg); setTimeout(() => setStatusMsg(''), 3000); };
+
+    const fetchData = async () => {
         try {
-            const resT = await fetch(`${API_URL}/templates`);
-            if (resT.ok) {
-                const dataT = await resT.json();
-                setTemplates(dataT || []);
-            }
-            const resC = await fetch(`${API_URL}/data/clients`);
-            if (resC.ok) {
-                const dataC = await resC.json();
-                setClients(dataC || []);
-            }
+            const [rT, rC] = await Promise.all([
+                fetch(`${API_URL}/templates`),
+                fetch(`${API_URL}/data/clients`),
+            ]);
+            if (rT.ok) setTemplates(await rT.json());
+            if (rC.ok) setClients(await rC.json());
         } catch (e) {
-            console.error("Błąd połączenia z API:", e);
+            console.error('API error:', e);
         }
     };
 
-    // --- 2. EFEKTY ---
+    useEffect(() => { fetchData(); }, []);
 
-    // Pobieranie danych przy starcie (zgodnie z zaleceniami ESLint)
     useEffect(() => {
-        const loadInitialData = async () => {
-            try {
-                const resT = await fetch(`${API_URL}/templates`);
-                if (resT.ok) {
-                    const textData = await resT.text();
-                    setTemplates(textData ? JSON.parse(textData) : []);
-                }
-                const resC = await fetch(`${API_URL}/data/clients`);
-                if (resC.ok) {
-                    const textData = await resC.text();
-                    setClients(textData ? JSON.parse(textData) : []);
-                }
-            } catch (err) {
-                console.error("Błąd podczas startu:", err);
-            }
-        };
-        loadInitialData();
-    }, []);
-
-    // Inicjalizacja edytora
-    useEffect(() => {
-        if (activeTab === 'design' && designerRef.current && !designerInstance.current) {
-            designerInstance.current = new Designer({
-                domContainer: designerRef.current,
-                template: { basePdf: BLANK_PDF, schemas: [{}] },
-                plugins: { text, image, qrcode: barcodes.qrcode },
-            });
-        }
+        if (!designerRef.current || designerInstance.current) return;
+        designerInstance.current = new Designer({
+            domContainer: designerRef.current,
+            template: { basePdf: BLANK_PDF, schemas: [{}] },
+            plugins: PLUGINS,
+        });
         return () => {
-            if (activeTab !== 'design' && designerInstance.current) {
-                designerInstance.current.destroy();
-                designerInstance.current = null;
-            }
+            designerInstance.current?.destroy();
+            designerInstance.current = null;
         };
-    }, [activeTab]);
-
-    // --- 3. AKCJE ---
+    }, []);
 
     const saveTemplate = async () => {
         if (!designerInstance.current) return;
+        const tmpl = designerInstance.current.getTemplate();
         try {
-            const template = designerInstance.current.getTemplate();
-            const payload = { name: reportName, schemaContent: JSON.stringify(template) };
             const res = await fetch(`${API_URL}/templates`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ name: reportName, schemaContent: JSON.stringify(tmpl) }),
             });
-            if (res.ok) {
-                alert("Zapisano!");
-                refreshData();
-            }
-        } catch (e) {
-            console.error(e); 
-            alert("Błąd zapisu.");
+            if (res.ok) { flash('✅ Zapisano!'); fetchData(); }
+            else flash(`❌ Błąd zapisu: ${res.status}`);
+        } catch {
+            flash('❌ Brak połączenia z backendem');
         }
     };
 
     const handleGeneratePdf = async () => {
-        // 1. Pobieramy wybrane ID z rozwijanych list (select)
-        const tId = document.getElementById('selTemp').value;
-        const cId = document.getElementById('selCli').value;
+        const templateData = templates.find(t => t.id === selectedTemplateId);
+        const client = clients.find(c => String(c.id) === selectedClientId);
+        if (!templateData || !client) { alert('Wybierz szablon i klienta!'); return; }
 
-        // 2. Szukamy obiektów w naszych listach (templates i clients)
-        const template = templates.find(t => t.id === tId);
-        const client = clients.find(c => (c.id || c.Id) == cId);
-
-        // 3. Sprawdzamy, czy użytkownik wszystko wybrał
-        if (!template || !client) {
-            alert("Proszę wybrać szablon oraz klienta!");
+        let parsedTemplate;
+        try {
+            parsedTemplate = JSON.parse(templateData.schemaContent);
+        } catch (e) {
+            alert('Błąd: schemaContent nie jest poprawnym JSON-em.\n' + e.message);
             return;
         }
 
+        const values = {
+            nazwa_klienta: client.name ?? '',
+            miasto:        client.city  ?? '',
+            email_klienta: client.email ?? '',
+            uwagi:         extraNotes,
+            data:          new Date().toLocaleDateString('pl-PL'),
+            numer_raportu: `RAP/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 9000) + 1000)}`,
+        };
+
+        const VAL = '__val';
+        const GAP = 3; // mm odstęp między etykietą a wartością
+
+        // Dla każdego pola z rozpoznaną nazwą dodaj pole-wartość obok po prawej stronie.
+        // Oryginalne pole zachowuje swoją zawartość (etykieta).
+        const modifiedSchemas = (parsedTemplate.schemas ?? []).map(page => {
+            const fields = Array.isArray(page)
+                ? page
+                : Object.entries(page).map(([name, props]) => ({ name, ...props }));
+
+            const valueFields = fields
+                .filter(f => f.name && f.name in values)
+                .map(f => ({
+                    ...f,
+                    name: f.name + VAL,
+                    position: { x: (f.position?.x ?? 0) + (f.width ?? 50) + GAP, y: f.position?.y ?? 0 },
+                    width: Math.max(50, f.width ?? 50),
+                    content: '',
+                }));
+
+            return [...fields, ...valueFields];
+        });
+
+        const modifiedTemplate = { ...parsedTemplate, schemas: modifiedSchemas };
+
+        // pdfme używa pustego stringa dla pól bez wpisu w inputs — trzeba jawnie skopiować content etykiet.
+        const inputRecord = {};
+        for (const page of modifiedSchemas) {
+            for (const field of (Array.isArray(page) ? page : [])) {
+                if (field.name?.endsWith(VAL)) {
+                    const originalKey = field.name.slice(0, -VAL.length);
+                    inputRecord[field.name] = values[originalKey] ?? '';
+                } else {
+                    // Zachowaj etykietę — skopiuj content ze schematu
+                    inputRecord[field.name] = field.content ?? '';
+                }
+            }
+        }
+
+        console.log('[pdfme] modifiedTemplate:', modifiedTemplate);
+        console.log('[pdfme] inputRecord:', inputRecord);
+
         try {
-            // 4. Przygotowujemy dane do "wstrzyknięcia" do PDF
-            // KLUCZE (po lewej) muszą być identyczne jak "Key" w Designerze!
-            const inputs = [{
-                nazwa_klienta: client.name || client.Name,
-                miasto: client.city || client.City,
-                email_klienta: client.email || client.Email, // Dane z PostgreSQL
-                uwagi: extraNotes,                           // Twoje notatki z pola tekstowego
-                data: new Date().toLocaleDateString(),       // Dzisiejsza data
-                numer_raportu: `RAP/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000)}`
-            }];
-
-            // 5. Uruchamiamy generator pdfme
-            const pdf = await generate({
-                template: JSON.parse(template.schemaContent),
-                inputs: inputs,
-                plugins: { text, image, qrcode: barcodes.qrcode }
-            });
-
-            // 6. Tworzymy plik i wywołujemy pobieranie w przeglądarce
+            const pdf = await generate({ template: modifiedTemplate, inputs: [inputRecord], plugins: PLUGINS });
             const blob = new Blob([pdf.buffer], { type: 'application/pdf' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `Raport_${client.name || client.Name}.pdf`;
+            link.download = `Raport_${client.name}.pdf`;
             link.click();
-
-        } catch (error) {
-            console.error("Błąd podczas generowania pliku PDF:", error);
-            alert("Nie udało się wygenerować raportu. Sprawdź konsolę (F12).");
+        } catch (err) {
+            console.error('generate() error:', err);
+            alert(`Błąd generowania PDF:\n${err.message}`);
         }
     };
 
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    const selectedClient = clients.find(c => String(c.id) === selectedClientId);
+    const schemaFields = (() => {
+        if (!selectedTemplate) return [];
+        try {
+            const parsed = JSON.parse(selectedTemplate.schemaContent);
+            return (parsed.schemas ?? []).flatMap(page =>
+                Array.isArray(page)
+                    ? page.map(f => f.name).filter(Boolean)
+                    : Object.keys(page)
+            );
+        } catch { return []; }
+    })();
+
+    const fieldValues = {
+        nazwa_klienta: selectedClient?.name ?? '—',
+        miasto: selectedClient?.city ?? '—',
+        email_klienta: selectedClient?.email ?? '—',
+        uwagi: extraNotes || '(puste)',
+        data: new Date().toLocaleDateString('pl-PL'),
+        numer_raportu: 'RAP/...',
+    };
+
+    const navBtn = (tab, label) => ({
+        padding: '15px 25px',
+        background: activeTab === tab ? '#3498db' : 'transparent',
+        color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold',
+    });
+
     return (
-        <div style={{ fontFamily: 'sans-serif' }}>
-            {/* MENU */}
-            <div style={{ display: 'flex', background: '#2c3e50' }}>
-                <button onClick={() => setActiveTab('design')} style={{ padding: '15px 25px', background: activeTab === 'design' ? '#3498db' : 'transparent', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-                    1. PROJEKTOWANIE
-                </button>
-                <button onClick={() => setActiveTab('generate')} style={{ padding: '15px 25px', background: activeTab === 'generate' ? '#3498db' : 'transparent', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-                    2. GENEROWANIE
-                </button>
+        <div style={{ fontFamily: 'sans-serif', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', background: '#2c3e50', flexShrink: 0 }}>
+                <button onClick={() => setActiveTab('design')} style={navBtn('design')}>1. PROJEKTOWANIE</button>
+                <button onClick={() => setActiveTab('generate')} style={navBtn('generate')}>2. GENEROWANIE</button>
             </div>
 
-            {activeTab === 'design' && (
-                <div style={{ height: 'calc(100vh - 50px)', display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ padding: '10px', background: '#ecf0f1', display: 'flex', gap: '10px' }}>
-                        <input value={reportName} onChange={(e) => setReportName(e.target.value)} style={{ padding: '5px', width: '250px' }} />
-                        <button onClick={saveTemplate} style={{ background: '#27ae60', color: 'white', border: 'none', padding: '5px 15px', borderRadius: '4px', cursor: 'pointer' }}>ZAPISZ</button>
-                    </div>
-                    <div ref={designerRef} style={{ flex: 1 }} />
+            {/* ── ZAKŁADKA PROJEKTOWANIE ── */}
+            <div style={{ display: activeTab === 'design' ? 'flex' : 'none', flex: 1, flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ padding: '8px 12px', background: '#ecf0f1', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
+                    <input
+                        value={reportName}
+                        onChange={e => setReportName(e.target.value)}
+                        style={{ padding: '6px', width: '220px', borderRadius: '4px', border: '1px solid #ccc' }}
+                        placeholder="Nazwa szablonu"
+                    />
+                    <button onClick={saveTemplate} style={btn('#27ae60')}>ZAPISZ</button>
+                    {statusMsg && <span style={{ color: statusMsg.startsWith('✅') ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>{statusMsg}</span>}
+                    <span style={{ fontSize: '11px', color: '#666', marginLeft: 'auto' }}>
+                        💡 Nazwy pól w designerze: <code>nazwa_klienta</code> · <code>miasto</code> · <code>email_klienta</code> · <code>uwagi</code> · <code>data</code> · <code>numer_raportu</code>
+                    </span>
                 </div>
-            )}
-            {activeTab === 'generate' && (
-                <div style={{ padding: '50px', maxWidth: '600px', margin: '0 auto' }}>
-                    <div style={{ background: 'white', padding: '30px', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', border: '1px solid #ddd' }}>
-                        <h2 style={{ marginTop: 0 }}>Generator Raportu</h2>
+                <div ref={designerRef} style={{ flex: 1, minHeight: 0 }} />
+            </div>
 
-                        <div style={{ marginBottom: '15px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>Szablon:</label>
-                            <select id="selTemp" style={{ width: '100%', padding: '10px' }}>
-                                <option value="">-- Wybierz --</option>
+            {/* ── ZAKŁADKA GENEROWANIE ── */}
+            {activeTab === 'generate' && (
+                <div style={{ flex: 1, overflowY: 'auto', padding: '40px 20px', background: '#f5f6fa' }}>
+                    <div style={{ maxWidth: '580px', margin: '0 auto', background: 'white', padding: '30px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+                        <h2 style={{ marginTop: 0, marginBottom: '24px' }}>Generator Raportu</h2>
+
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600 }}>Szablon:</label>
+                            <select
+                                value={selectedTemplateId}
+                                onChange={e => setSelectedTemplateId(e.target.value)}
+                                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+                            >
+                                <option value="">-- Wybierz szablon --</option>
                                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                         </div>
 
-                        <div style={{ marginBottom: '20px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px' }}>Klient:</label>
-                            <select id="selCli" style={{ width: '100%', padding: '10px' }}>
-                                <option value="">-- Wybierz --</option>
-                                {clients.map(c => <option key={c.id || c.Id} value={c.id || c.Id}>{c.name || c.Name}</option>)}
+                        <div style={{ marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600 }}>Klient:</label>
+                            <select
+                                value={selectedClientId}
+                                onChange={e => setSelectedClientId(e.target.value)}
+                                style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc' }}
+                            >
+                                <option value="">-- Wybierz klienta --</option>
+                                {clients.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
                             </select>
                         </div>
 
-                        {/* --- TUTAJ DODAJEMY NOWE POLE NA UWAGI --- */}
                         <div style={{ marginBottom: '20px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Uwagi dodatkowe (ręcznie):</label>
+                            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 600 }}>Uwagi dodatkowe:</label>
                             <textarea
                                 value={extraNotes}
-                                onChange={(e) => setExtraNotes(e.target.value)}
-                                placeholder="Wpisz tutaj uwagi, które pojawią się w PDF..."
-                                style={{ width: '100%', height: '80px', padding: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                                onChange={e => setExtraNotes(e.target.value)}
+                                placeholder="Wpisz uwagi, które pojawią się w PDF..."
+                                style={{ width: '100%', height: '80px', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', boxSizing: 'border-box', resize: 'vertical' }}
                             />
                         </div>
-                        {/* ----------------------------------------- */}
 
-                        <button onClick={handleGeneratePdf} style={{ width: '100%', padding: '15px', background: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            POBIERZ PDF
+                        {/* Podgląd pól szablonu */}
+                        {schemaFields.length > 0 && (
+                            <div style={{ marginBottom: '20px', padding: '14px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #dee2e6' }}>
+                                <strong style={{ fontSize: '13px' }}>📋 Pola szablonu i ich wartości:</strong>
+                                <table style={{ width: '100%', marginTop: '8px', fontSize: '13px', borderCollapse: 'collapse' }}>
+                                    <tbody>
+                                        {schemaFields.map(field => (
+                                            <tr key={field} style={{ borderBottom: '1px solid #dee2e6' }}>
+                                                <td style={{ padding: '4px 8px', fontFamily: 'monospace', color: '#2c3e50' }}>{field}</td>
+                                                <td style={{ padding: '4px 8px', color: fieldValues[field] ? '#555' : '#aaa' }}>
+                                                    {fieldValues[field] ?? <em style={{ color: '#aaa' }}>nieznane pole — zostanie puste</em>}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={handleGeneratePdf}
+                            style={{ ...btn('#3498db'), width: '100%', padding: '14px', fontSize: '15px' }}
+                        >
+                            ⬇ POBIERZ PDF
                         </button>
                     </div>
                 </div>
