@@ -44,7 +44,7 @@ Projekt został skonfigurowany do łatwego uruchamiania za pomocą Dockera. Nie 
 2. Uruchom wszystkie usługi za pomocą polecenia:
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 *(Flaga `--build` wymusi zbudowanie obrazów przy pierwszej instalacji. Flaga `-d` uruchomi kontenery w tle).*
 
@@ -76,7 +76,7 @@ Po uruchomieniu kontenerów poszczególne elementy systemu są dostępne pod nas
 Aby zatrzymać kontenery (bez kasowania danych), użyj polecenia w tym samym folderze:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 Dane zostają zachowane na stałym wolumenie dockerowym, więc po ponownym uruchomieniu wcześniejsze szablony wciąż tam będą!
