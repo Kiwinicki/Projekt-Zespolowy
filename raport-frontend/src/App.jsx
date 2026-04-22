@@ -85,47 +85,26 @@ function App() {
 
         const values = {
             nazwa_klienta: client.name ?? '',
-            miasto:        client.city  ?? '',
+            miasto: client.city ?? '',
             email_klienta: client.email ?? '',
-            uwagi:         extraNotes,
-            data:          new Date().toLocaleDateString('pl-PL'),
+            uwagi: extraNotes,
+            data: new Date().toLocaleDateString('pl-PL'),
             numer_raportu: `RAP/${new Date().getFullYear()}/${String(Math.floor(Math.random() * 9000) + 1000)}`,
         };
 
-        const VAL = '__val';
-        const GAP = 3; // mm odstęp między etykietą a wartością
+        // Łączymy etykietę (content ze schematu) z wartością z bazy w jednym polu.
+        const modifiedTemplate = parsedTemplate;
 
-        // Dla każdego pola z rozpoznaną nazwą dodaj pole-wartość obok po prawej stronie.
-        // Oryginalne pole zachowuje swoją zawartość (etykieta).
-        const modifiedSchemas = (parsedTemplate.schemas ?? []).map(page => {
+        const inputRecord = {};
+        for (const page of (parsedTemplate.schemas ?? [])) {
             const fields = Array.isArray(page)
                 ? page
-                : Object.entries(page).map(([name, props]) => ({ name, ...props }));
-
-            const valueFields = fields
-                .filter(f => f.name && f.name in values)
-                .map(f => ({
-                    ...f,
-                    name: f.name + VAL,
-                    position: { x: (f.position?.x ?? 0) + (f.width ?? 50) + GAP, y: f.position?.y ?? 0 },
-                    width: Math.max(50, f.width ?? 50),
-                    content: '',
-                }));
-
-            return [...fields, ...valueFields];
-        });
-
-        const modifiedTemplate = { ...parsedTemplate, schemas: modifiedSchemas };
-
-        // pdfme używa pustego stringa dla pól bez wpisu w inputs — trzeba jawnie skopiować content etykiet.
-        const inputRecord = {};
-        for (const page of modifiedSchemas) {
-            for (const field of (Array.isArray(page) ? page : [])) {
-                if (field.name?.endsWith(VAL)) {
-                    const originalKey = field.name.slice(0, -VAL.length);
-                    inputRecord[field.name] = values[originalKey] ?? '';
+                : Object.values(page);
+            for (const field of fields) {
+                if (!field.name) continue;
+                if (field.name in values) {
+                    inputRecord[field.name] = (field.content ?? '') + values[field.name];
                 } else {
-                    // Zachowaj etykietę — skopiuj content ze schematu
                     inputRecord[field.name] = field.content ?? '';
                 }
             }
